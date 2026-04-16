@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import authRoutes from "./routes/auth.routes";
+import "reflect-metadata";
 
 const app = express();
 app.use(cors());
