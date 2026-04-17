@@ -41,6 +41,9 @@ export const authMiddleware = (
 
 export default authMiddleware;
 
+
+
+
 // import jwt from "jsonwebtoken";
 // import { Request, Response, NextFunction } from "express";
 
