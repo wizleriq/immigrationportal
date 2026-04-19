@@ -1,15 +1,17 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { AppDataSource } from "../../data-source";
 import { loginUser, registerUser } from "./auth.services";
 import { User } from "../../entities/user.entities"
 import { Agent } from "../../entities/agent.entities";
 import { StudentProfile } from "../../entities/student-profile.entities";
+import { Beneficiary } from "../../entities/beneficiary.entities";
+import { PaymentTransaction } from "../../entities/payment-transaction.entities";
 
 interface AuthRequest extends Request {
   user?: any;
 }
 
-export const register = async (req: Request, res: Response) => {
+export const register = async (req: Request, res: Response, next: NextFunction) => {
     const { email, password } = req.body;
 
     // basic validation
@@ -18,25 +20,41 @@ export const register = async (req: Request, res: Response) => {
             message: "Email and password are required",
         });
     }
+
+    if (password.length < 6) {
+        return res.status(400).json({
+            message: "Password must be at least 6 characters long",
+        });
+    }
+
+    // check if user already exists
+   
     
     try {
+         const userRepo = AppDataSource.getRepository(User);
+    const existingUser = await userRepo.findOne({
+        where: { email },
+    });
+
+    if (existingUser) {
+        return res.status(400).json({
+            message: "Email is already registered",
+        });
+    } 
+
         const user = await registerUser(email, password);
 
         return res.status(201).json({
             message: "User registered successfully",
             data: user,
         });
-    } catch (error: any) {
-        console.error("Registration error:", error.message);
-
-        return res.status(400).json({
-            message: error.message || "Registration failed",
-        });
+    } catch (error) {
+        next(error);
     }
 };
 
 
-export const login = async (req: Request, res: Response) => {
+export const login = async (req: Request, res: Response, next: NextFunction) => {
     const { email, password } = req.body;
 
     // basic validation
@@ -61,15 +79,11 @@ export const login = async (req: Request, res: Response) => {
         });
 
     } catch (error) {
-        console.error("Login error:", error);
-
-        return res.status(500).json({
-            message: "Internal server error",
-        });
-    }
+    next(error); // ✅ send to error middleware
+  }
 };
 
-export const createAgent = async (req: AuthRequest, res: Response) => {
+export const createAgent = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
      console.log("REQ.USER:", req.user); 
 
@@ -131,17 +145,12 @@ export const createAgent = async (req: AuthRequest, res: Response) => {
       data: agent,
     });
 
-  } catch (error) {   // ✅ NOW CORRECT
-    console.error("CREATE AGENT ERROR:", error);
-
-    return res.status(500).json({
-      message: "Server error",
-      error: error instanceof Error ? error.message : error,
-    });
+  }catch (error) {
+    next(error); // ✅ send to error middleware
   }
 };
 
-export const createStudentProfile = async (req: AuthRequest, res: Response) => {
+export const createStudentProfile = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const agentRepo = AppDataSource.getRepository(Agent);
         const studentRepo = AppDataSource.getRepository(StudentProfile);
@@ -185,131 +194,137 @@ export const createStudentProfile = async (req: AuthRequest, res: Response) => {
         message: "Student Created successfully",
         data: studentProfile,
     });
-} catch (error) {
-    console.error("CREATE STUDENT ERROR:", error);
-    console.log("USER ID:", req.user?.id);
-console.log("AGENT:", Agent);
+}catch (error) {
+    next(error); // ✅ send to error middleware
+  }
+};
 
-    return res.status(500).json({
-        message: "Server error",
-        error: error instanceof Error ? error.message : error,
+export const createBeneficiary = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const beneficiaryRepo = AppDataSource.getRepository(Beneficiary);
+        const { 
+            beneficiary_type,
+            name,
+            swift_code,
+            bank_name,
+            account_number, 
+            routing_number,
+            contact_email,
+            contact_phone,
+            address_line1,
+            address_line2,
+            city,
+            province_state,
+            country
+         } = req.body;
+
+         const beneficiary = new Beneficiary();
+
+        beneficiary.beneficiary_type = beneficiary_type;
+        beneficiary.name = name;
+        beneficiary.swift_code = swift_code;
+        beneficiary.bank_name = bank_name;
+        beneficiary.account_number = account_number;
+        beneficiary.routing_number = routing_number;
+        beneficiary.contact_email = contact_email;
+        beneficiary.contact_phone = contact_phone;
+        beneficiary.address_line1 = address_line1;
+        beneficiary.address_line2 = address_line2;
+        beneficiary.city = city;
+        beneficiary.province_state = province_state;
+        beneficiary.country = country;
+        beneficiary.is_active = true;
+
+        await beneficiaryRepo.save(beneficiary);
+
+        return res.status(201).json({
+            message: "Beneficiary created successfully",
+            data: beneficiary,
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const createPaymentTransaction = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const transactionRepo = AppDataSource.getRepository(PaymentTransaction);
+        const studentRepo = AppDataSource.getRepository(StudentProfile);
+        const beneficiaryRepo = AppDataSource.getRepository(Beneficiary);
+        const agentRepo = AppDataSource.getRepository(Agent);
+
+        const userId = req.user?.id;
+
+        const agent = await agentRepo.findOne({
+            where: { user: { id: userId } },
+            relations: ["user"],
+        });
+
+        if (!agent) 
+            return res.status(404).json({
+                message: "You're not an agent",
+            });
+    }
+
+     const {
+      student_id,
+      beneficiary_id,
+      cad_amount,
+      payment_type,
+      local_currency,
+      student_number_at_beneficiary,    
+    } = req.body;
+
+
+    // validate student
+     const student = await studentRepo.findOne({
+      where: { student_id },
+      relations: ["agent"],
     });
-}}
+
+    if (!student) {
+      return res.status(404).json({
+        message: "Student not found",
+      });
+    }
+
+    // 🔐 SECURITY: ensure student belongs to agent
+    if (student.agent.agent_id !== agent.agent_id) {
+      return res.status(403).json({
+        message: "You can only create transactions for your own students",
+      });
+    }
+
+    // ✅ 3. Validate beneficiary
+    const beneficiary = await beneficiaryRepo.findOneBy({ beneficiary_id });
+
+    if (!beneficiary) {
+      return res.status(404).json({
+        message: "Beneficiary not found",
+      });
+    }
+
+    const FX_RATE = 1500;
+    const SERVICE_FEE_PERCENT = 0.02;
+
+    const localAmount = cad_amount * FX_RATE
+    const serviceFee = localAmount * SERVICE_FEE_PERCENT;
+    const totalPayableLocal = localAmount + serviceFee;
+
+    const transaction = new PaymentTransaction();
+    transaction.transaction_reference = `TXN-${Date.now()}`;
+    transaction.student_profile = student;
+    transaction.agent = Agent;
+    transaction.beneficiary = beneficiary;
+    transaction.payment_type = payment_type;
+    transaction.student_number_at_beneficiary = student_number_at_beneficiary;
+    transaction.cad_amount = cad_amount;
+    transaction.local_currency = local_currency;
+    transaction.local_amount = localAmount;
+    transaction.service_fee_amount = serviceFee;
+    transaction.total_payable_local = totalPayableLocal;
+    transaction.status = "pending";
+    transaction.local_amount = cad_amount * 1.25;
 
 
-
-// export const createAgent = async (req: AuthRequest, res: Response) => {
-//     try {
-//         const userRepo = AppDataSource.getRepository(User);
-//         const agentRepo = AppDataSource.getRepository(Agent)
-
-//         const userId = req.user?.id;
-
-//         const user = await userRepo.findOneBy({ id: userId });
-
-//         if (!user) {
-//             return res.status(404).json({
-//                 message: "User not found",
-//             });
-//         }
-
-//         const existingAgent = await agentRepo.findOne({
-//   where: { user: user },
-// });
-        
-//     //     const existingAgent = await agentRepo.findOne({
-//     //   where: { user: { id: userId } },
-//     //   relations: ["user"],
-//     // });
-
-//     if (existingAgent) {
-//         return res.status(400).json({
-//             message: "Agent already exists for this user",
-//         });
-//     }
-
-//        const {
-//       name,
-//       contact_person,
-//       email,
-//       phone_number,
-//       address_line1,
-//       address_line2,
-//       city,
-//       state_origin,
-//       country,
-//     } = req.body;    
-
-//     const agent = new Agent();
-//     agent.user = user;
-//     agent.name = name;
-//     agent.contact_person = contact_person;
-//     agent.contact_number = phone_number;
-//     agent.email = email;
-//     agent.address_line1 = address_line1;
-//     agent.address_line2 = address_line2;
-//     agent.city = city;
-//     agent.state_origin = state_origin;
-//     agent.country = country;
-
-//     agent.code = `AGENT-${Date.now()}`;
-
-//     agent.commission_percent = 0;
-//     agent.is_active = true;
-    
-//     await agentRepo.save(agent);
-    
-//     return res.status(201).json({
-//     message: "Agent created successfully",
-//     data: agent,
-// });
-// } catch (error) {
-//     console.error("CREATE AGENT ERROR:", error);
-
-//     return res.status(500).json({
-//         message: "Server error",
-//         error: error instanceof Error ? error.message : error,
-//     });
-// }}
-
-// } catch (error) {
-//     return res.status(500).json({ message: "Server error" });
-// }
-// }
-
-
-
-
-
-// import { Request, Response } from "express";
-// import { loginUser, registerUser} from "./auth.services";
-
-
-// export const register = async (req: Request, res: Response) => {
-//     const {email, password} = req.body;
-//     try {
-//         const user = await registerUser(email, password);
-//         res.status(201).json({message: "User registered successfully", user});
-//     } catch (error) {
-//         console.error("Registeration error", error);
-//         res.status(500).json({message: "Internal server error"});
-//     }
-// };
-
-
-
-// export const login = async (req: Request, res: Response) => {
-//     const { email, password } = req.body;
-//     try { 
-//         const user = await loginUser(email, password);
-//         if (!user!) {
-//             return res.status(401).json({ message: "Invalid email or password" });
-//         }
-//         res.status(200).json({ message: "login successful", user });  
-//     }
-//     catch (error) {
-//         console.error("Login error", error);
-//         res.status(500).json({ message: "Internal server error" });
-//     }
-// };
-
+}

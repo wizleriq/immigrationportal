@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { register, login, createAgent, createStudentProfile } from "../services/auth/auth.controller";
+import { register, login, createAgent, createStudentProfile, createBeneficiary } from "../services/auth/auth.controller";
 import authMiddleware from "../middleware/auth.middleware";
 // import { register, login } from "../services/auth/auth.controller"; 
 
@@ -9,6 +9,7 @@ router.post("/register", register);
 router.post("/login", login);
 router.post("/become-agent", authMiddleware, createAgent);
 router.post("/student", authMiddleware, createStudentProfile);
+router.post("/beneficiary", authMiddleware, createBeneficiary);
 
 // // your routes here
 // router.post("/login", ...);

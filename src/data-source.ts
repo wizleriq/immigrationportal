@@ -2,6 +2,8 @@ import "reflect-metadata";
 import { User } from "./entities/user.entities";
 import { Agent } from "./entities/agent.entities";
 import { StudentProfile } from "./entities/student-profile.entities";
+import { Beneficiary } from "./entities/beneficiary.entities";
+import { PaymentTransaction } from "./entities/payment-transaction.entities";
 import { DataSource } from "typeorm";
 import * as dotenv from "dotenv";
 dotenv.config();
@@ -15,8 +17,8 @@ const AppDataSource = new DataSource({
   database: process.env.DB_NAME || "cowrisdb",
 
   // entities: [__dirname + "/entities/*.{ts,js}"],
-   entities: [User, Agent, StudentProfile],
-
+  entities: [User, Agent, StudentProfile, Beneficiary, PaymentTransaction],
+  
   synchronize: true, // ⚠️ ONLY FOR DEV
   logging: false,
 });
