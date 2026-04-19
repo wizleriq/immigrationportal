@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, ManyToOne, Column,  CreateDateColumn, UpdateDateColumn } from "typeorm";
 import { StudentProfile } from "./student-profile.entities";
 import { Beneficiary } from "./beneficiary.entities";
-import { Agent } from "node:http";
+import { Agent } from "./agent.entities";
 
 @Entity ({ name: "payment-transactions" })
 export class PaymentTransaction {
@@ -12,7 +12,7 @@ export class PaymentTransaction {
     transaction_reference!: string;
 
     @ManyToOne(() => StudentProfile)
-    student_profile!: StudentProfile;
+    student!: StudentProfile;
 
     @ManyToOne(() => Agent)
     agent!: Agent;

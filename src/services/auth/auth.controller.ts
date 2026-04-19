@@ -246,38 +246,40 @@ export const createBeneficiary = async (req: AuthRequest, res: Response, next: N
     }
 }
 
-export const createPaymentTransaction = async (req: AuthRequest, res: Response, next: NextFunction) => {
-    try {
-        const transactionRepo = AppDataSource.getRepository(PaymentTransaction);
-        const studentRepo = AppDataSource.getRepository(StudentProfile);
-        const beneficiaryRepo = AppDataSource.getRepository(Beneficiary);
-        const agentRepo = AppDataSource.getRepository(Agent);
+export const createPaymentTransaction = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const transactionRepo = AppDataSource.getRepository(PaymentTransaction);
+    const studentRepo = AppDataSource.getRepository(StudentProfile);
+    const beneficiaryRepo = AppDataSource.getRepository(Beneficiary);
+    const agentRepo = AppDataSource.getRepository(Agent);
 
-        const userId = req.user?.id;
+    const userId = req.user?.id;
 
-        const agent = await agentRepo.findOne({
-            where: { user: { id: userId } },
-            relations: ["user"],
-        });
+    const agent = await agentRepo.findOne({
+      where: { user: { id: userId } },
+      relations: ["user"],
+    });
 
-        if (!agent) 
-            return res.status(404).json({
-                message: "You're not an agent",
-            });
+    if (!agent) {
+      return res.status(404).json({
+        message: "You're not an agent",
+      });
     }
 
-     const {
+    const {
       student_id,
       beneficiary_id,
       cad_amount,
       payment_type,
       local_currency,
-      student_number_at_beneficiary,    
+      student_number_at_beneficiary,
     } = req.body;
 
-
-    // validate student
-     const student = await studentRepo.findOne({
+    const student = await studentRepo.findOne({
       where: { student_id },
       relations: ["agent"],
     });
@@ -288,14 +290,12 @@ export const createPaymentTransaction = async (req: AuthRequest, res: Response, 
       });
     }
 
-    // 🔐 SECURITY: ensure student belongs to agent
     if (student.agent.agent_id !== agent.agent_id) {
       return res.status(403).json({
         message: "You can only create transactions for your own students",
       });
     }
 
-    // ✅ 3. Validate beneficiary
     const beneficiary = await beneficiaryRepo.findOneBy({ beneficiary_id });
 
     if (!beneficiary) {
@@ -307,24 +307,139 @@ export const createPaymentTransaction = async (req: AuthRequest, res: Response, 
     const FX_RATE = 1500;
     const SERVICE_FEE_PERCENT = 0.02;
 
-    const localAmount = cad_amount * FX_RATE
+    const localAmount = cad_amount * FX_RATE;
     const serviceFee = localAmount * SERVICE_FEE_PERCENT;
     const totalPayableLocal = localAmount + serviceFee;
 
     const transaction = new PaymentTransaction();
+
     transaction.transaction_reference = `TXN-${Date.now()}`;
-    transaction.student_profile = student;
-    transaction.agent = Agent;
+    transaction.student = student; // ✅ fixed
+    transaction.agent = agent;     // ✅ fixed
     transaction.beneficiary = beneficiary;
+
     transaction.payment_type = payment_type;
     transaction.student_number_at_beneficiary = student_number_at_beneficiary;
+
     transaction.cad_amount = cad_amount;
     transaction.local_currency = local_currency;
+
     transaction.local_amount = localAmount;
     transaction.service_fee_amount = serviceFee;
     transaction.total_payable_local = totalPayableLocal;
+
+    transaction.rate_locked_at = new Date();
+    transaction.rate_expires_at = new Date(Date.now() + 15 * 60 * 1000);
+
+    transaction.local_transfer_due_at = new Date(
+      Date.now() + 48 * 60 * 60 * 1000
+    );
+
+    transaction.beneficiary_confirmation_flag = false;
     transaction.status = "pending";
-    transaction.local_amount = cad_amount * 1.25;
+
+    await transactionRepo.save(transaction); // ✅ VERY IMPORTANT
+
+    return res.status(201).json({
+      message: "Payment transaction created successfully",
+      data: transaction,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+// export const createPaymentTransaction = async (req: AuthRequest, res: Response, next: NextFunction) => {
+//     try {
+//         const transactionRepo = AppDataSource.getRepository(PaymentTransaction);
+//         const studentRepo = AppDataSource.getRepository(StudentProfile);
+//         const beneficiaryRepo = AppDataSource.getRepository(Beneficiary);
+//         const agentRepo = AppDataSource.getRepository(Agent);
+
+//         const userId = req.user?.id;
+
+//         const agent = await agentRepo.findOne({
+//             where: { user: { id: userId } },
+//             relations: ["user"],
+//         });
+
+//         if (!agent) 
+//             return res.status(404).json({
+//                 message: "You're not an agent",
+//             });
+//     }
+
+//      const {
+//       student_id,
+//       beneficiary_id,
+//       cad_amount,
+//       payment_type,
+//       local_currency,
+//       student_number_at_beneficiary,    
+//     } = req.body;
 
 
-}
+//     // validate student
+//      const student = await studentRepo.findOne({
+//       where: { student_id },
+//       relations: ["agent"],
+//     });
+
+//     if (!student) {
+//       return res.status(404).json({
+//         message: "Student not found",
+//       });
+//     }
+
+//     // 🔐 SECURITY: ensure student belongs to agent
+//     if (student.agent.agent_id !== agent.agent_id) {
+//       return res.status(403).json({
+//         message: "You can only create transactions for your own students",
+//       });
+//     }
+
+//     // ✅ 3. Validate beneficiary
+//     const beneficiary = await beneficiaryRepo.findOneBy({ beneficiary_id });
+
+//     if (!beneficiary) {
+//       return res.status(404).json({
+//         message: "Beneficiary not found",
+//       });
+//     }
+
+//     const FX_RATE = 1500;
+//     const SERVICE_FEE_PERCENT = 0.02;
+
+//     const localAmount = cad_amount * FX_RATE
+//     const serviceFee = localAmount * SERVICE_FEE_PERCENT;
+//     const totalPayableLocal = localAmount + serviceFee;
+
+//     const transaction = new PaymentTransaction();
+//     transaction.transaction_reference = `TXN-${Date.now()}`;
+//     transaction.student_profile = student;
+//     transaction.agent = Agent;
+//     transaction.beneficiary = beneficiary;
+//     transaction.payment_type = payment_type;
+//     transaction.student_number_at_beneficiary = student_number_at_beneficiary;
+//     transaction.cad_amount = cad_amount;
+//     transaction.local_currency = local_currency;
+//     transaction.local_amount = localAmount;
+//     transaction.service_fee_amount = serviceFee;
+//     transaction.total_payable_local = totalPayableLocal;
+//     transaction.status = "pending";
+//     transaction.local_amount = cad_amount * 1.25;
+//     transaction.rate_locked_at = new Date();
+//     transaction.rate_expires_at = new Date(Date.now() + 15 * 60 * 1000); // expires in 15 mins
+//     transaction.local_transfer_due_at = new Date(Date.now() + 48 * 60 * 60 * 1000); // due in 48 hours
+//     transaction.beneficiary_confirmation_flag = false;
+//     transaction.status = "pending";
+
+//     return res.status(201).json({
+//         message: "Payment transaction created successfully",
+//         data: transaction,
+//     });
+// } catch (error) {
+//     next(error);
+//   }
+// }
