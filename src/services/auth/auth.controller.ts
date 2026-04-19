@@ -6,9 +6,12 @@ import { Agent } from "../../entities/agent.entities";
 import { StudentProfile } from "../../entities/student-profile.entities";
 import { Beneficiary } from "../../entities/beneficiary.entities";
 import { PaymentTransaction } from "../../entities/payment-transaction.entities";
+import { KYCDocument } from "../../entities/kyc-document.entities";
+import { PaymentProof } from "../../entities/payment-proof.entities";
 
 interface AuthRequest extends Request {
   user?: any;
+//   file?: Express.Multer.File;
 }
 
 export const register = async (req: Request, res: Response, next: NextFunction) => {
@@ -350,96 +353,108 @@ export const createPaymentTransaction = async (
   }
 };
 
-// export const createPaymentTransaction = async (req: AuthRequest, res: Response, next: NextFunction) => {
-//     try {
-//         const transactionRepo = AppDataSource.getRepository(PaymentTransaction);
-//         const studentRepo = AppDataSource.getRepository(StudentProfile);
-//         const beneficiaryRepo = AppDataSource.getRepository(Beneficiary);
-//         const agentRepo = AppDataSource.getRepository(Agent);
+export const createkycDocument = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const kycRepo = AppDataSource.getRepository(KYCDocument);
+    const studentRepo = AppDataSource.getRepository(StudentProfile);
 
-//         const userId = req.user?.id;
+    const userId = req.user?.id;
 
-//         const agent = await agentRepo.findOne({
-//             where: { user: { id: userId } },
-//             relations: ["user"],
-//         });
+    // 1. Get student
+    const student = await studentRepo.findOne({
+  where: { student_id: req.body.student_id },
+});
+    // const student = await studentRepo.findOne({
+    //   where: { id: req.body.student_id },
+    // });
 
-//         if (!agent) 
-//             return res.status(404).json({
-//                 message: "You're not an agent",
-//             });
-//     }
+    if (!student) {
+      return res.status(404).json({
+        message: "Student not found",
+      });
+    }
 
-//      const {
-//       student_id,
-//       beneficiary_id,
-//       cad_amount,
-//       payment_type,
-//       local_currency,
-//       student_number_at_beneficiary,    
-//     } = req.body;
+    // const file = req.file;
+    const file = req.file as Express.Multer.File;
+    const { document_type } = req.body;
 
+    if (!file) {
+      return res.status(400).json({
+        message: "No file uploaded",
+      });
+    }
 
-//     // validate student
-//      const student = await studentRepo.findOne({
-//       where: { student_id },
-//       relations: ["agent"],
-//     });
+    // 2. Create KYC
+    const kyc = new KYCDocument();
+    kyc.student = student;
+    kyc.document_type = document_type;
+    kyc.file_path = file.path;
+    kyc.file_name = file.originalname;
+    kyc.mime_type = file.mimetype;
 
-//     if (!student) {
-//       return res.status(404).json({
-//         message: "Student not found",
-//       });
-//     }
+    await kycRepo.save(kyc);
 
-//     // 🔐 SECURITY: ensure student belongs to agent
-//     if (student.agent.agent_id !== agent.agent_id) {
-//       return res.status(403).json({
-//         message: "You can only create transactions for your own students",
-//       });
-//     }
+    return res.status(201).json({
+      message: "KYC document uploaded successfully",
+      data: kyc,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
-//     // ✅ 3. Validate beneficiary
-//     const beneficiary = await beneficiaryRepo.findOneBy({ beneficiary_id });
+export const uploadPaymentProof = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const proofRepo = AppDataSource.getRepository(PaymentProof);
+    const transactionRepo = AppDataSource.getRepository(PaymentTransaction);
 
-//     if (!beneficiary) {
-//       return res.status(404).json({
-//         message: "Beneficiary not found",
-//       });
-//     }
+    const { transaction_id } = req.body;
+    const file = req.file as Express.Multer.File;
 
-//     const FX_RATE = 1500;
-//     const SERVICE_FEE_PERCENT = 0.02;
+    if (!file) {
+        return res.status(400).json({
+            message: "No file uploaded",
+        });
+    }
 
-//     const localAmount = cad_amount * FX_RATE
-//     const serviceFee = localAmount * SERVICE_FEE_PERCENT;
-//     const totalPayableLocal = localAmount + serviceFee;
+    const transaction = await transactionRepo.findOne({
+        where: { transaction_id },
+        relations: ["student", "agent"],
+    });
 
-//     const transaction = new PaymentTransaction();
-//     transaction.transaction_reference = `TXN-${Date.now()}`;
-//     transaction.student_profile = student;
-//     transaction.agent = Agent;
-//     transaction.beneficiary = beneficiary;
-//     transaction.payment_type = payment_type;
-//     transaction.student_number_at_beneficiary = student_number_at_beneficiary;
-//     transaction.cad_amount = cad_amount;
-//     transaction.local_currency = local_currency;
-//     transaction.local_amount = localAmount;
-//     transaction.service_fee_amount = serviceFee;
-//     transaction.total_payable_local = totalPayableLocal;
-//     transaction.status = "pending";
-//     transaction.local_amount = cad_amount * 1.25;
-//     transaction.rate_locked_at = new Date();
-//     transaction.rate_expires_at = new Date(Date.now() + 15 * 60 * 1000); // expires in 15 mins
-//     transaction.local_transfer_due_at = new Date(Date.now() + 48 * 60 * 60 * 1000); // due in 48 hours
-//     transaction.beneficiary_confirmation_flag = false;
-//     transaction.status = "pending";
+    if (!transaction) {
+        return res.status(404).json({
+            message: "Transaction not found",
+        });
+}
 
-//     return res.status(201).json({
-//         message: "Payment transaction created successfully",
-//         data: transaction,
-//     });
-// } catch (error) {
-//     next(error);
-//   }
-// }
+const proof = new PaymentProof();
+proof.transaction = transaction;
+proof.uploaded_by = transaction.agent.user; 
+proof.file_path = file.path;
+proof.file_name = file.originalname;
+proof.mime_type = file.mimetype;
+proof.is_valid = false;
+// proof.rejection_reason = "";
+// proof.validated_by = null;
+// proof.uploaded_at = new Date();
+// proof.updated_at = new Date();
+
+await proofRepo.save(proof);
+
+return res.status(201).json({
+    message: "Payment proof uploaded successfully",
+    data: proof,
+ });
+} catch (error) {
+    next(error);
+  }
+};

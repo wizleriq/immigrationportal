@@ -13,7 +13,8 @@
     "module": "commonjs",
     "esModuleInterop": true, 
     "target": "esnext",
-    "types": [],
+    "types": ["node", "express", "multer"],
+    // "types": [],
     // For nodejs:
     // "lib": ["esnext"],
     // "types": ["node"],
