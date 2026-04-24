@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { register, login, createAgent, createStudentProfile, createBeneficiary, createPaymentTransaction, createkycDocument, uploadPaymentProof } from "../services/auth/auth.controller";
 import authMiddleware from "../middleware/auth.middleware";
+import { getTransaction, getTransactionHistory } from "../services/auth/auth.controller";
+
 // import { register, login } from "../services/auth/auth.controller"; 
 
 const router = Router();
@@ -13,6 +15,10 @@ router.post("/beneficiary", authMiddleware, createBeneficiary);
 router.post("/transaction", authMiddleware, createPaymentTransaction);
 router.post("/kyc-document", authMiddleware, createkycDocument);
 router.post("/payment-proof", authMiddleware, uploadPaymentProof);
+router.post("/status-history/:transaction_id", authMiddleware);
+router.post("/transaction", authMiddleware, getTransaction);
+router.post("/transactions/:id", authMiddleware, getTransaction);
+
 
 // // your routes here
 // router.post("/login", ...);

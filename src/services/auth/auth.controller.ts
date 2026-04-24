@@ -8,6 +8,8 @@ import { Beneficiary } from "../../entities/beneficiary.entities";
 import { PaymentTransaction } from "../../entities/payment-transaction.entities";
 import { KYCDocument } from "../../entities/kyc-document.entities";
 import { PaymentProof } from "../../entities/payment-proof.entities";
+import { StatusHistory } from "../../entities/status-history.entities";
+import { ForexRateQuote } from "../../entities/forex-rate-quote.entities";
 
 interface AuthRequest extends Request {
   user?: any;
@@ -307,7 +309,21 @@ export const createPaymentTransaction = async (
       });
     }
 
-    const FX_RATE = 1500;
+    // const FX_RATE = 1500;
+    const forexRepo = AppDataSource.getRepository(ForexRateQuote);
+    const forex = await forexRepo.findOne({
+      where: { base_currency: "CAD", target_currency: "NGN", },
+      order: { created_at: "DESC" },
+    });
+    if (!forex) {
+        return res.status(500).json({
+            message: "No forex ra te available for CAD to NGN",
+        });
+    }
+
+    const FX_RATE = forex.fx_rate;
+
+
     const SERVICE_FEE_PERCENT = 0.02;
 
     const localAmount = cad_amount * FX_RATE;
@@ -352,6 +368,46 @@ export const createPaymentTransaction = async (
     next(error);
   }
 };
+
+export const getTransactionHistory = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const repo = AppDataSource.getRepository(PaymentTransaction);
+        const transactions = await repo.find({
+            relations: ["student", "agent", "beneficiary", "status_history", "payment_proofs"]
+        });
+        return res.status(200).json({
+            message: "Transaction history retrieved successfully",
+            data: transactions,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getTransaction = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const repo = AppDataSource.getRepository(PaymentTransaction);
+    const  id = req.params.id as string;
+
+    const transaction = await repo.findOne({ 
+      where: { transaction_id: id },
+      relations: [ "student", "agent", "beneficiary"]
+    });
+
+    if (!transaction) {
+      return res.status(404).json({
+        message: "Transaction not found",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Transaction retrieved successfully",
+      data: transaction,
+    });
+  } catch (error) {
+    next(error);
+  }
+  }
 
 export const createkycDocument = async (
   req: AuthRequest,
@@ -458,3 +514,90 @@ return res.status(201).json({
     next(error);
   }
 };
+
+export const updateTransactionStatus = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const transaction_id = req.params.transaction_id as string;
+    const { status } = req.body;
+
+    const transactionRepo = AppDataSource.getRepository(PaymentTransaction);
+    const statusRepo = AppDataSource.getRepository(StatusHistory);
+
+    const transaction = await transactionRepo.findOne({
+      where: { transaction_id },
+    });
+
+    if (!transaction) {
+      return res.status(404).json({
+        message: "Transaction not found",
+      });
+    }
+
+    const oldStatus = transaction.status;
+
+    // update transaction
+    transaction.status = status;
+    await transactionRepo.save(transaction);
+
+    // create status history
+    const history = new StatusHistory();
+    history.transaction = transaction;
+    history.old_status = oldStatus;
+    history.new_status = status;
+    history.changed_by = req.user;
+
+    await statusRepo.save(history);
+
+    return res.json({
+      message: "Status updated and history recorded",
+      data: history,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
+// export const statusHistory = async (req: AuthRequest, res: Response, next: NextFunction) => {
+//     try {
+//         const { transaction_id } = req.params;
+//         const { status } = req.body;
+
+//         const transactionRepo = AppDataSource.getRepository(PaymentTransaction);
+//         const statusRepo = AppDataSource.getRepository(statusHistory);
+
+//         const transaction = await transactionRepo.findOne({
+//             where: { transaction_id }
+//         })
+
+//         if (!transaction)
+//             return res.status(404).json({ message: "Transaction not found"})
+//     }
+
+//     const oldStatus = transaction.status;
+//     transaction.status = status;
+//     await transactionRepo.save(transaction);
+
+//     const statusHistory = new statusHistory();
+//     statusHistory.transaction = transaction;
+//     statusHistory.old_status = oldStatus;
+//     statusHistory.new_status = status;
+//     statusHistory.changed_by = req.user?.id; 
+//     statusHistory.changed_at = new Date();
+
+//     await statusRepo.save(statusHistory);
+
+//     return res.json({
+//         message: "Status updated and history recorded",
+//         data: statusHistory,
+//     });
+//     catch (error) {
+//         next(error);
+//      }
+//     }

@@ -1,6 +1,7 @@
-import { Entity, PrimaryGeneratedColumn, ManyToOne, Column,  CreateDateColumn, UpdateDateColumn } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, ManyToOne, Column,  CreateDateColumn, UpdateDateColumn, OneToMany } from "typeorm";
 import { StudentProfile } from "./student-profile.entities";
 import { Beneficiary } from "./beneficiary.entities";
+import { StatusHistory } from "./status-history.entities";
 import { Agent } from "./agent.entities";
 
 @Entity ({ name: "payment-transactions" })
@@ -14,6 +15,9 @@ export class PaymentTransaction {
     @ManyToOne(() => StudentProfile)
     student!: StudentProfile;
 
+    @OneToMany(() => StatusHistory, (history) => history.transaction)
+    status_history!: StatusHistory[];
+    
     @ManyToOne(() => Agent)
     agent!: Agent;
 

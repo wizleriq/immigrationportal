@@ -7,6 +7,8 @@ import { PaymentTransaction } from "./entities/payment-transaction.entities";
 import { KYCDocument } from "./entities/kyc-document.entities";
 import { PaymentProof } from "./entities/payment-proof.entities";
 import { DataSource } from "typeorm";
+import { StatusHistory } from "./entities/status-history.entities";
+import { ForexRateQuote } from "./entities/forex-rate-quote.entities";
 import * as dotenv from "dotenv";
 dotenv.config();
 
@@ -19,7 +21,7 @@ const AppDataSource = new DataSource({
   database: process.env.DB_NAME || "cowrisdb",
 
   // entities: [__dirname + "/entities/*.{ts,js}"],
-  entities: [User, Agent, StudentProfile, Beneficiary, PaymentTransaction, KYCDocument, PaymentProof],
+  entities: [User, Agent, StudentProfile, Beneficiary, PaymentTransaction, KYCDocument, PaymentProof, StatusHistory, ForexRateQuote],
 
   synchronize: true, // ⚠️ ONLY FOR DEV
   logging: false,
