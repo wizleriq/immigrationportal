@@ -12,7 +12,7 @@ export class StatusHistory {
 
     // @ManyToMany(() => PaymentTransaction)
     // transaction!: PaymentTransaction;
-
+    
     @Column()
     old_status!: string;
 

@@ -10,6 +10,7 @@ import { KYCDocument } from "../../entities/kyc-document.entities";
 import { PaymentProof } from "../../entities/payment-proof.entities";
 import { StatusHistory } from "../../entities/status-history.entities";
 import { ForexRateQuote } from "../../entities/forex-rate-quote.entities";
+import { verifyEmail } from "./auth.services";
 
 interface AuthRequest extends Request {
   user?: any;
@@ -57,8 +58,6 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         next(error);
     }
 };
-
-
 export const login = async (req: Request, res: Response, next: NextFunction) => {
     const { email, password } = req.body;
 
@@ -88,6 +87,24 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
   }
 };
 
+export const verifyEmailController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const { email, code } = req.body;
+
+  try {
+    const data = await verifyEmail(email, code);
+
+    return res.status(200).json({
+      message: "Email verified successfully",
+      data,
+    });
+  } catch (error) {
+    next(error); // send to error middleware
+  }
+}
 export const createAgent = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
      console.log("REQ.USER:", req.user); 
